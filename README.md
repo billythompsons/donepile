@@ -1,0 +1,154 @@
+# ✅ DonePile — Notes to Done List
+
+**The dreaded task:** staring at a messy pile of meeting notes and brain-dump
+text, then re-reading it three times to turn it into an actual task list —
+with owners, deadlines and priorities — before you can even *start* the work.
+
+**DonePile does that step for you.** Paste the pile in, get a clean,
+prioritised, checkbox-ready done-list out. It runs **entirely on your own
+machine, on CPU**, with an **open-weight model** — no cloud, no API key, no
+account, no paid service, and your notes never leave the device.
+
+Built for the Hacktoberfest Week 3 "Slow and Steady" Open Source AI Challenge:
+build with open-source / open-weight AI that rewards laziness, automates a
+dreaded task, and makes life easier.
+
+![Demo output](demo-output.md) — run `python demo.py` to generate a live one.
+
+---
+
+## What it does
+
+Input — a real, messy pile (`samples/messy-notes.txt`):
+
+```text
+ok so website landing page hero text is still wrong, sarah said she can fix it by friday??
+- budget report — i keep putting this off, due thursday...
+mike: api keys are expiring, he needs to rotate them before monday or the demo breaks
+renew the domain before it expires on the 28th!! costs like $12 just do it
+...
+```
+
+Output — a structured done-list (actual model output from the smoke test is
+saved in `evidence/SMOKE-TEST.md` and `demo-output.md`):
+
+```text
+DONEPILE — 13 tasks extracted locally
+==============================================
+[ ] (High  ) Rotate API keys  —  Mike · Monday
+[ ] (High  ) Renew domain  —  Me · 28th
+...
+Estimated manual effort saved: ~24.5 minutes
+```
+
+Every task comes with an **owner**, a **due day/date** (exactly as mentioned
+in the notes, or "No date"), and a **priority** (High / Medium / Low), grouped
+and ready to paste into any to-do app or Markdown notes.
+
+## Effort saved (the lazy payoff)
+
+Sorting one messy pile by hand means re-reading every line, rewriting it as
+an action, figuring out whose it is, hunting for the date, and deciding how
+urgent it is. DonePile's estimate is deliberately transparent and conservative:
+
+> **~1.5 minutes per item + ~5 minutes of initial pile-sorting**
+
+A 13-item pile ≈ **24.5 minutes saved, every time** — and the pile stops being
+a source of dread, which is the real win. The formula lives in
+`donepile/render.py` (`SECONDS_PER_ITEM_MANUAL`, `PILE_SORT_MINUTES`) so you
+can argue with it in the open.
+
+## How it works — open-weight model, local inference, at the core
+
+| Layer | What | Licence |
+|---|---|---|
+| Model | **Qwen2.5-1.5B-Instruct** (GGUF, Q4_K_M quantisation, ~1.07 GB) from `Qwen/Qwen2.5-1.5B-Instruct-GGUF` | Apache-2.0 |
+| Inference harness | **llama.cpp** via `llama-cpp-python` — runs the model on CPU | MIT |
+| App code | This repo (CLI + local web UI, Python standard library UI) | MIT (see `LICENSE`) |
+
+Flow:
+
+1. `donepile/engine.py` loads the GGUF model with llama.cpp (CPU threads =
+   your core count) and sends your notes with a strict system prompt:
+   *"Reply with ONLY a JSON array of {task, owner, due, priority}."*
+2. The model's JSON is parsed and validated (`parse_tasks`).
+3. `donepile/render.py` formats it as a grouped Markdown / text checklist.
+
+**Honesty box — what is AI and what is not:**
+The *extraction* (reading the mess, deciding what is a task, who owns it,
+when it is due, how urgent it is) is done by the model. The only deterministic
+code afterwards drops *exact* duplicate lines, sorts High → Medium → Low, and
+formats the output. There is **no rule-based fallback and no fake AI**: if the
+model file is missing, DonePile downloads it (once, from Hugging Face) or
+explains how — it never pretends rules are a model.
+
+**Privacy:** after the one-time model download, DonePile works fully offline.
+Meeting notes, brain dumps and to-do lists are exactly the kind of text you
+should not have to paste into someone else's cloud.
+
+## Quickstart
+
+```bash
+git clone [REPO_URL]
+cd hacktoberfest-week3        # (repo root once published)
+
+python3 -m venv .venv
+source .venv/bin/activate     # Windows: .venv\Scripts\activate
+pip install -r requirements.txt   # builds llama-cpp-python; needs a C compiler + cmake
+
+# One-command demo on the bundled messy sample:
+python demo.py
+
+# Your own pile:
+python -m donepile.cli path/to/your-notes.txt -o done.md
+cat your-notes.txt | python -m donepile.cli -
+
+# Local web UI (paste-and-click):
+python app.py                 # then open http://127.0.0.1:8765
+```
+
+The first run downloads the model (~350 MB) into `models/`. Every run after
+that is offline; a typical pile takes under a minute or two on CPU.
+
+## Tests & evidence
+
+```bash
+python tests/test_parse_and_render.py   # deterministic helper tests (no model needed)
+```
+
+- `evidence/SMOKE-TEST.md` — the real smoke test run on this project's sample:
+  exact input, exact raw model output, rendered done-list, model file + size,
+  machine + timing.
+- `demo-output.md` — the Markdown done-list generated by `python demo.py`.
+
+## Limitations (stated plainly)
+
+- A 1.5B model is still a *small* brain: it occasionally drops or merges an
+  item, paraphrases a task, or guesses a priority you might set differently.
+  In the bundled smoke test it extracted 13 solid tasks but skipped the
+  groceries line and folded "the Q4 slides" into "Get chart from Ben".
+  Treat the output as an excellent first draft of your list, not gospel —
+  it gets you from dread to done-list, then you skim and adjust.
+- Extraction is chunked (4 lines per model call) because small models keep
+  owners/dates attached far more reliably on short inputs. The trade-off is
+  speed: the 15-line sample takes ~39 seconds on this project's 2-core
+  test VM; a typical laptop CPU is faster.
+- Dates are extracted **as written** ("friday", "the 28th") — DonePile does
+  not resolve them to calendar dates or set reminders.
+- Very long piles are limited by the 4096-token context; split huge dumps
+  into chunks.
+- First `pip install` compiles llama.cpp, which can take a few minutes.
+
+## Why open innovation matters
+
+This project only exists because a capable instruction-tuned model is
+published under Apache-2.0 and a community harness (llama.cpp) makes it run
+on an ordinary laptop CPU. No gatekeeper, no per-token meter, no "paste your
+private notes into our cloud" trade. Open weights turn "AI that helps with
+the boring parts of life" into something anyone can inspect, run offline,
+and build on — which is exactly what Hacktoberfest is for.
+
+## Licence
+
+Code: MIT (`LICENSE`). Model weights: Qwen2.5 © Alibaba Cloud, Apache-2.0.
+llama.cpp / llama-cpp-python: MIT.

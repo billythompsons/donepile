@@ -1,0 +1,5 @@
+# DonePile — all open-source, no paid services, no API keys.
+# llama-cpp-python: Python bindings for llama.cpp (MIT) — the local inference harness.
+# huggingface-hub: used once, only to download the open-weight model file.
+llama-cpp-python>=0.3.0
+huggingface-hub>=0.24.0
